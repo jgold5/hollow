@@ -1,0 +1,4 @@
+.zig-cache/
+.vscode/
+*.o
+**/zig-out/
