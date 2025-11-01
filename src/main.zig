@@ -2,30 +2,54 @@
 //! you are building an executable. If you are making a library, the convention
 //! is to delete this file and start with root.zig instead.
 
+const init = @import("commands/init.zig");
+const Ctx = @import("core/ctx.zig").Ctx;
+
 pub fn main() !u8 {
     var args = std.process.args();
     _ = args.next();
+    const parent = std.heap.page_allocator;
+    var arena = std.heap.ArenaAllocator.init(parent);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const ctx = try Ctx.init(alloc);
     const cmd = args.next().?;
-    if (std.mem.eql(u8, cmd, "build")) {
-        std.debug.print("Building now\n", .{});
-        return 0;
-    } else if (std.mem.eql(u8, cmd, "init")) {
-        std.debug.print("Initing now\n", .{});
-        return 0;
-    } else if (std.mem.eql(u8, cmd, "serve")) {
-        std.debug.print("Serving now\n", .{});
-        return 0;
-    } else if (std.mem.eql(u8, cmd, "--help")) {
-        std.debug.print("{s}\n", .{help});
-        return 0;
-    } else if (std.mem.eql(u8, cmd, "--version")) {
-        std.debug.print("Versioning now\n", .{});
-        return 0;
+    if (std.mem.startsWith(u8, cmd, "--")) {
+        if (std.mem.eql(u8, cmd, "--help")) {
+            std.debug.print("{s}\n", .{help});
+            return 0;
+        } else if (std.mem.eql(u8, cmd, "--version")) {
+            std.debug.print("Versioning now\n", .{});
+            return 0;
+        } else {
+            std.debug.print("Invalid command '{s}'\n", .{cmd});
+            return 64;
+        }
     } else {
-        std.debug.print("Invalid command '{s}'\n", .{cmd});
-        return 64;
+        switch (parseSubcommand(cmd)) {
+            Cmd.init => {
+                const opts: init.InitOpts = .{ .project_root = "hollow" };
+                _ = try init.run(&ctx, opts);
+                return 0;
+            },
+            else => return 64,
+        }
     }
 }
+
+fn parseSubcommand(cmd: [:0]const u8) Cmd {
+    if (std.mem.eql(u8, cmd, "build")) {
+        return Cmd.build;
+    } else if (std.mem.eql(u8, cmd, "init")) {
+        return Cmd.init;
+    } else if (std.mem.eql(u8, cmd, "serve")) {
+        return Cmd.serve;
+    } else {
+        return Cmd.invalid;
+    }
+}
+
+const Cmd = enum { init, build, serve, invalid };
 
 const help =
     \\hollow — static site tool
