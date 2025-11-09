@@ -3,6 +3,7 @@
 //! is to delete this file and start with root.zig instead.
 
 const init = @import("commands/init.zig");
+const build = @import("commands/build.zig");
 const Ctx = @import("core/ctx.zig").Ctx;
 
 pub fn main() !u8 {
@@ -30,6 +31,10 @@ pub fn main() !u8 {
             Cmd.init => {
                 const opts: init.InitOpts = .{ .project_root = "hollow" };
                 _ = try init.run(&ctx, opts);
+                return 0;
+            },
+            Cmd.build => {
+                _ = try build.run();
                 return 0;
             },
             else => return 64,
