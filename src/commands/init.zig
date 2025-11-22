@@ -21,6 +21,15 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
         try ctx.cwd.makePath(p);
     }
 
+    const baseIndex = try std.fs.path.join(a, &.{ root, "content", "index.md" });
+    defer a.free(baseIndex);
+
+    const default_index = 
+        \\# Welcome
+        \\This is your new hollow site.
+        \\Edit content/index.md to get started
+    ;
+
     const default_cfg =
         \\[project]
         \\name = "hollow-site"
@@ -30,6 +39,7 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
         \\public = "public"
     ;
     try writeAll(cfgRel, default_cfg);
+    try writeAll(baseIndex, default_index);
     return Project{ .root_path = try a.dupe(u8, root), .config_path = try a.dupe(u8, cfgRel) };
 }
 
