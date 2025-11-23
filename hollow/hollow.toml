@@ -1,0 +1,6 @@
+[project]
+name = "hollow-site"
+version = "0.1.0"
+[paths]
+content = "content"
+public = "public"

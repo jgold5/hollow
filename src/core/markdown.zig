@@ -1,12 +1,25 @@
 const std = @import("std");
 
-extern fn md_html(
+pub extern fn md_html(
     input: [*]const u8,
     input_size: usize,
+    process_output: *const fn ([*]const u8, usize, *anyopaque) callconv(.C) void,
+    userdata: *anyopaque,
+    parser_flags: c_uint,
+    renderer_flags: c_uint,
 ) c_int;
 
-//int
-//md_html(const MD_CHAR* input, MD_SIZE input_size,
-//        void (*process_output)(const MD_CHAR*, MD_SIZE, void*),
-//        void* userdata, unsigned parser_flags, unsigned renderer_flags)
-//{
+pub fn hmtl_callback(text: [*]const u8, size: usize, userdata: *anyopaque) callconv(.C) void {
+    const col: *Collector = @ptrCast(@alignCast(userdata));
+    const chunk = text[0..size];
+    col.buf.appendSlice(chunk) catch {};
+}
+
+const Collector = struct {
+    buf: std.ArrayList(u8),
+    pub fn init(alloc: std.mem.Allocator) Collector {
+        return .{
+            .buf = std.ArrayList(u8).init(alloc),
+        };
+    }
+};

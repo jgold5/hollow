@@ -2,8 +2,8 @@
 //! you are building an executable. If you are making a library, the convention
 //! is to delete this file and start with root.zig instead.
 
-const init = @import("commands/init.zig");
-const build = @import("commands/build.zig");
+const init = @import("commands/init_cmd.zig");
+const build = @import("commands/build_cmd.zig");
 const Ctx = @import("core/ctx.zig").Ctx;
 
 pub fn main() !u8 {
@@ -34,7 +34,7 @@ pub fn main() !u8 {
                 return 0;
             },
             Cmd.build => {
-                _ = try build.run();
+                _ = try build.run(alloc);
                 return 0;
             },
             else => return 64,

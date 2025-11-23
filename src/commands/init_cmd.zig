@@ -24,7 +24,7 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
     const baseIndex = try std.fs.path.join(a, &.{ root, "content", "index.md" });
     defer a.free(baseIndex);
 
-    const default_index = 
+    const default_index =
         \\# Welcome
         \\This is your new hollow site.
         \\Edit content/index.md to get started

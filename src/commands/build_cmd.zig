@@ -1,14 +1,14 @@
 const std = @import("std");
-const Ctx = @import("../core/ctx.zig").Ctx;
+const md = @import("../core/markdown.zig");
 
 pub const DiscoverResult = struct {
-    project_root: []const u8,
-    config_path: []const u8,
+    projectRoot: []const u8,
+    configPath: []const u8,
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *DiscoverResult) void {
-        self.allocator.free(self.project_root);
-        self.allocator.free(self.config_path);
+        self.allocator.free(self.projectRoot);
+        self.allocator.free(self.configPath);
     }
 };
 
@@ -32,7 +32,7 @@ fn validateRoot(allocator: std.mem.Allocator, path_in: []const u8) !?DiscoverRes
         return null;
     };
     cfg_file.close();
-    return DiscoverResult{ .allocator = allocator, .project_root = try allocator.dupe(u8, abs), .config_path = cfg_path };
+    return DiscoverResult{ .allocator = allocator, .projectRoot = try allocator.dupe(u8, abs), .configPath = cfg_path };
 }
 
 fn toAbsoluteReal(allocator: std.mem.Allocator, path_in: []const u8) ![]u8 {
@@ -84,7 +84,51 @@ fn upwardSearch(allocator: std.mem.Allocator, start_cwd: []const u8) !DiscoverRe
     return error.ProjectRootNotFound;
 }
 
-pub fn run() !void {}
+pub fn run(alloc: std.mem.Allocator) !void {
+    const proc_cwd_buf = try std.fs.cwd().realpathAlloc(alloc, ".");
+    defer alloc.free(proc_cwd_buf);
+    var root = try discoverProjectRoot(alloc, proc_cwd_buf, null);
+    defer root.deinit();
+    const mdFiles = try findMdFiles(alloc, root);
+    defer alloc.free(mdFiles);
+    for (mdFiles) |f| {
+        defer alloc.free(f.absPath);
+        defer alloc.free(f.relPath);
+        std.debug.print("{s}\n", .{f.absPath});
+    }
+    //const ext = std.fs.path.extension(entry.basename);
+    //if (std.mem.eql(u8, ext, ".md")) {
+    //    const curr = try std.fs.cwd().openFile(entry.path, .{});
+    //    const end = try curr.getEndPos();
+    //    const fileBuf = try alloc.alloc(u8, end);
+    //    defer alloc.free(fileBuf);
+    //    _ = try curr.readAll(fileBuf);
+    //    var outBuf = std.ArrayList(u8).init(alloc);
+    //    defer outBuf.deinit();
+    //    _ = md.md_html(fileBuf.ptr, end, md.hmtl_callback, @ptrCast(&outBuf), 0, 0);
+    //    std.debug.print("MD File: {s}\n", .{outBuf.items});
+    //}
+}
+
+const MdFile = struct {
+    absPath: []const u8,
+    relPath: []const u8,
+};
+
+fn findMdFiles(alloc: std.mem.Allocator, root: DiscoverResult) ![]MdFile {
+    var out = std.ArrayList(MdFile).init(alloc);
+    defer out.deinit();
+    const rootAsDir = try std.fs.openDirAbsolute(root.projectRoot, .{ .iterate = true });
+    var walker = try rootAsDir.walk(alloc);
+    defer walker.deinit();
+    while (try walker.next()) |entry| {
+        const ext = std.fs.path.extension(entry.basename);
+        if (std.mem.eql(u8, ext, ".md")) {
+            try out.append(MdFile{ .absPath = try alloc.dupe(u8, entry.path), .relPath = try alloc.dupe(u8, entry.basename) });
+        }
+    }
+    return out.toOwnedSlice();
+}
 
 fn chdirScoped(a: std.mem.Allocator, into: []const u8) !void {
     const prev = try std.process.getCwdAlloc(a);
@@ -106,21 +150,29 @@ fn chdirScoped(a: std.mem.Allocator, into: []const u8) !void {
 //    const want = try tmp.dir.realpathAlloc(a, "proj");
 //    defer a.free(want);
 //    defer got.deinit();
-//    try std.testing.expectEqualStrings(want, got.project_root);
+//    try std.testing.expectEqualStrings(want, got.projectRoot);
 //}
 
-test "Discover root in CWD" {
+test "Find MD files" {
     const a = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.makePath("proj/");
+    try tmp.dir.makePath("proj/sub/");
+    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.md", .data = "" });
+    try tmp.dir.writeFile(.{ .sub_path = "proj/sub/a.md", .data = "" });
     try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.toml", .data = "" });
     const start = try tmp.dir.realpathAlloc(a, "proj/");
     defer a.free(start);
     try chdirScoped(a, start);
-    var got = try discoverProjectRoot(a, start, null);
-    const want = try tmp.dir.realpathAlloc(a, "proj");
-    defer a.free(want);
-    defer got.deinit();
-    try std.testing.expectEqualStrings(want, got.project_root);
+    var root = try discoverProjectRoot(a, start, null);
+    defer root.deinit();
+    const mdFiles = try findMdFiles(a, root);
+    defer a.free(mdFiles);
+    for (mdFiles) |f| {
+        defer a.free(f.relPath);
+        defer a.free(f.absPath);
+        std.debug.print("{s}\n", .{f.relPath});
+        std.debug.print("{s}\n", .{f.absPath});
+    }
 }

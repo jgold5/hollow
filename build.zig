@@ -49,20 +49,25 @@ pub fn build(b: *std.Build) void {
 
     b.step("test-debug", "Build test binary for debug").dependOn(&tests.step);
 
-    const md4c_mod = b.addModule("md4c", .{        
+    const md4c_mod = b.addModule("md4c", .{
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
     md4c_mod.addIncludePath(b.path("thirdparty/md4c"));
 
-    const md4c = b.addStaticLibrary(.{
-        .name = "md4c",
-        .root_module = md4c_mod
-    });
+    const md4c = b.addStaticLibrary(.{ .name = "md4c", .root_module = md4c_mod });
 
     md4c.addCSourceFile(.{
         .file = b.path("thirdparty/md4c/md4c-html.c"),
+        .flags = &.{},
+    });
+    md4c.addCSourceFile(.{
+        .file = b.path("thirdparty/md4c/md4c.c"),
+        .flags = &.{},
+    });
+    md4c.addCSourceFile(.{
+        .file = b.path("thirdparty/md4c/entity.c"),
         .flags = &.{},
     });
     md4c.addIncludePath(b.path("thirdparty/md4c"));
