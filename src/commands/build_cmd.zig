@@ -91,23 +91,16 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer root.deinit();
     const mdFiles = try findMdFiles(alloc, root);
     defer alloc.free(mdFiles);
-    for (mdFiles) |f| {
-        defer alloc.free(f.absPath);
-        defer alloc.free(f.relPath);
-        std.debug.print("{s}\n", .{f.absPath});
+    for (mdFiles) |entry| {
+        defer alloc.free(entry.absPath);
+        defer alloc.free(entry.relPath);
+        const curr = try std.fs.cwd().openFile(entry.absPath, .{});
+        const end = try curr.getEndPos();
+        const fileBuf = try alloc.alloc(u8, end);
+        defer alloc.free(fileBuf);
+        _ = try curr.readAll(fileBuf);
+        try mdToHtml(alloc, fileBuf);
     }
-    //const ext = std.fs.path.extension(entry.basename);
-    //if (std.mem.eql(u8, ext, ".md")) {
-    //    const curr = try std.fs.cwd().openFile(entry.path, .{});
-    //    const end = try curr.getEndPos();
-    //    const fileBuf = try alloc.alloc(u8, end);
-    //    defer alloc.free(fileBuf);
-    //    _ = try curr.readAll(fileBuf);
-    //    var outBuf = std.ArrayList(u8).init(alloc);
-    //    defer outBuf.deinit();
-    //    _ = md.md_html(fileBuf.ptr, end, md.hmtl_callback, @ptrCast(&outBuf), 0, 0);
-    //    std.debug.print("MD File: {s}\n", .{outBuf.items});
-    //}
 }
 
 const MdFile = struct {
@@ -128,6 +121,23 @@ fn findMdFiles(alloc: std.mem.Allocator, root: DiscoverResult) ![]MdFile {
         }
     }
     return out.toOwnedSlice();
+}
+
+fn mdToHtml(alloc: std.mem.Allocator, mdFile: []const u8) !void {
+    var outBuf = std.ArrayList(u8).init(alloc);
+    defer outBuf.deinit();
+    _ = md.md_html(mdFile.ptr, mdFile.len, md.hmtl_callback, @ptrCast(&outBuf), 0, 0);
+    std.debug.print("MD File: {s}\n", .{outBuf.items});
+
+    //const curr = try std.fs.cwd().openFile(entry.path, .{});
+    //    const end = try curr.getEndPos();
+    //    const fileBuf = try alloc.alloc(u8, end);
+    //    defer alloc.free(fileBuf);
+    //    _ = try curr.readAll(fileBuf);
+    //    var outBuf = std.ArrayList(u8).init(alloc);
+    //    defer outBuf.deinit();
+    //    _ = md.md_html(fileBuf.ptr, end, md.hmtl_callback, @ptrCast(&outBuf), 0, 0);
+    //    std.debug.print("MD File: {s}\n", .{outBuf.items});
 }
 
 fn chdirScoped(a: std.mem.Allocator, into: []const u8) !void {
@@ -153,26 +163,57 @@ fn chdirScoped(a: std.mem.Allocator, into: []const u8) !void {
 //    try std.testing.expectEqualStrings(want, got.projectRoot);
 //}
 
-test "Find MD files" {
-    const a = std.testing.allocator;
+test "MD To HTML" {
+    const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.makePath("proj/");
     try tmp.dir.makePath("proj/sub/");
-    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.md", .data = "" });
-    try tmp.dir.writeFile(.{ .sub_path = "proj/sub/a.md", .data = "" });
+    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.md", .data = "# HI" });
+    try tmp.dir.writeFile(.{ .sub_path = "proj/sub/a.md", .data = "## HELLO" });
     try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.toml", .data = "" });
-    const start = try tmp.dir.realpathAlloc(a, "proj/");
-    defer a.free(start);
-    try chdirScoped(a, start);
-    var root = try discoverProjectRoot(a, start, null);
+    const start = try tmp.dir.realpathAlloc(alloc, "proj/");
+    defer alloc.free(start);
+    try chdirScoped(alloc, start);
+    var root = try discoverProjectRoot(alloc, start, null);
     defer root.deinit();
-    const mdFiles = try findMdFiles(a, root);
-    defer a.free(mdFiles);
-    for (mdFiles) |f| {
-        defer a.free(f.relPath);
-        defer a.free(f.absPath);
-        std.debug.print("{s}\n", .{f.relPath});
-        std.debug.print("{s}\n", .{f.absPath});
+    const mdFiles = try findMdFiles(alloc, root);
+    defer alloc.free(mdFiles);
+    for (mdFiles) |entry| {
+        defer alloc.free(entry.absPath);
+        defer alloc.free(entry.relPath);
+        const curr = try std.fs.cwd().openFile(entry.absPath, .{});
+        const end = try curr.getEndPos();
+        const fileBuf = try alloc.alloc(u8, end);
+        defer alloc.free(fileBuf);
+        _ = try curr.readAll(fileBuf);
+        var outBuf = std.ArrayList(u8).init(alloc);
+        defer outBuf.deinit();
+        _ = md.md_html(fileBuf.ptr, fileBuf.len, md.hmtl_callback, @ptrCast(&outBuf), 0, 0);
+        std.debug.print("MD File: {s}\n", .{outBuf.items});
     }
 }
+
+//test "Find MD files" {
+//    const a = std.testing.allocator;
+//    var tmp = std.testing.tmpDir(.{});
+//    defer tmp.cleanup();
+//    try tmp.dir.makePath("proj/");
+//    try tmp.dir.makePath("proj/sub/");
+//    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.md", .data = "" });
+//    try tmp.dir.writeFile(.{ .sub_path = "proj/sub/a.md", .data = "" });
+//    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.toml", .data = "" });
+//    const start = try tmp.dir.realpathAlloc(a, "proj/");
+//    defer a.free(start);
+//    try chdirScoped(a, start);
+//    var root = try discoverProjectRoot(a, start, null);
+//    defer root.deinit();
+//    const mdFiles = try findMdFiles(a, root);
+//    defer a.free(mdFiles);
+//    for (mdFiles) |f| {
+//        defer a.free(f.relPath);
+//        defer a.free(f.absPath);
+//        std.debug.print("{s}\n", .{f.relPath});
+//        std.debug.print("{s}\n", .{f.absPath});
+//    }
+//}
