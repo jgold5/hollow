@@ -5,13 +5,17 @@ pub const Ctx = struct {
     cwd: std.fs.Dir,
     env: std.process.EnvMap,
     log: std.fs.File,
+    project_root: ?[]const u8,
+    out_dir: ?[]const u8,
 
     pub fn init(allocator: std.mem.Allocator) !Ctx {
-        return .{ .allocator = allocator, .cwd = std.fs.cwd(), .env = try std.process.getEnvMap(allocator), .log = std.io.getStdErr() };
+        return .{ .allocator = allocator, .cwd = std.fs.cwd(), .env = try std.process.getEnvMap(allocator), .log = std.io.getStdErr(), .project_root = null, .out_dir = null };
     }
 
     pub fn deinit(self: *Ctx) void {
         self.env.deinit();
+        if (self.project_root) |p| self.allocator.free(p);
+        if (self.out_dir) |o| self.allocator.free(o);
     }
 
     pub fn getenv(self: *const Ctx, key: []const u8) ?[]const u8 {

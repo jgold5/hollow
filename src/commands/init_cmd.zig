@@ -14,7 +14,7 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
             .config_path = try a.dupe(u8, cfgRel),
         };
     }
-    const dirs = [_][]const u8{ "content", "layouts", "public", "themes/default", ".hollow/cache" };
+    const dirs = [_][]const u8{ "content", "layouts", "public", "themes/default", ".hollow/cache", "out", "content/posts" };
     for (dirs) |d| {
         const p = try std.fs.path.join(a, &.{ root, d });
         defer a.free(p);
@@ -30,6 +30,15 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
         \\Edit content/index.md to get started
     ;
 
+    const secondIndex = try std.fs.path.join(a, &.{ root, "content", "posts", "index.md" });
+    defer a.free(secondIndex);
+
+    const second_text =
+        \\# Welcome
+        \\This is your new hollow site.
+        \\Edit content/index.md to get started
+    ;
+
     const default_cfg =
         \\[project]
         \\name = "hollow-site"
@@ -40,6 +49,7 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
     ;
     try writeAll(cfgRel, default_cfg);
     try writeAll(baseIndex, default_index);
+    try writeAll(secondIndex, second_text);
     return Project{ .root_path = try a.dupe(u8, root), .config_path = try a.dupe(u8, cfgRel) };
 }
 

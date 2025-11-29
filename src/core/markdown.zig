@@ -10,16 +10,7 @@ pub extern fn md_html(
 ) c_int;
 
 pub fn hmtl_callback(text: [*]const u8, size: usize, userdata: *anyopaque) callconv(.C) void {
-    const col: *Collector = @ptrCast(@alignCast(userdata));
+    const file: *std.fs.File = @ptrCast(@alignCast(userdata));
     const chunk = text[0..size];
-    col.buf.appendSlice(chunk) catch {};
+    _ = file.writeAll(chunk) catch {};
 }
-
-const Collector = struct {
-    buf: std.ArrayList(u8),
-    pub fn init(alloc: std.mem.Allocator) Collector {
-        return .{
-            .buf = std.ArrayList(u8).init(alloc),
-        };
-    }
-};

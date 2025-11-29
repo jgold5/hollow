@@ -14,7 +14,7 @@ pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(parent);
     defer arena.deinit();
     const alloc = arena.allocator();
-    const ctx = try Ctx.init(alloc);
+    var ctx = try Ctx.init(alloc);
     const cmd = args.next().?;
     if (std.mem.startsWith(u8, cmd, "--")) {
         if (std.mem.eql(u8, cmd, "--help")) {
@@ -35,7 +35,7 @@ pub fn main() !u8 {
                 return 0;
             },
             Cmd.build => {
-                _ = try build.run(alloc);
+                _ = try build.run(&ctx);
                 return 0;
             },
             else => return 64,
