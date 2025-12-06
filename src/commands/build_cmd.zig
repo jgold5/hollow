@@ -122,8 +122,8 @@ fn mdToHtml(ctx: *Ctx, md_file: MdFile) !void {
     defer ctx.allocator.free(file_buf);
     _ = try curr.readAll(file_buf);
     const out_file = try make_out_file(ctx, md_file);
-    var out_file_handle = try std.fs.openFileAbsolute(out_file, .{ .mode = .read_write });
     defer ctx.allocator.free(out_file);
+    var out_file_handle = try std.fs.openFileAbsolute(out_file, .{ .mode = .read_write });
     defer out_file_handle.close();
     _ = md.md_html(file_buf.ptr, file_buf.len, md.hmtl_callback, @ptrCast(&out_file_handle), 0, 0);
     //std.debug.print("out file: {s}\n", .{out_file});
@@ -143,13 +143,13 @@ fn make_out_file(ctx: *Ctx, md_file: MdFile) ![]const u8 {
     const final_out_path = try std.fs.path.join(ctx.allocator, &.{ dir_of_out_file, out_html_file });
     _ = try ctx.cwd.makePath(dir_of_out_file);
     const f = try std.fs.cwd().createFile(final_out_path, .{ .truncate = true });
-    defer ctx.allocator.free(content_root);
-    defer ctx.allocator.free(path_from_content_root);
-    defer ctx.allocator.free(path_to_out_file);
-    defer ctx.allocator.free(out_file_name);
-    defer ctx.allocator.free(out_html_file);
-    defer ctx.allocator.free(dir_of_out_file);
-    defer f.close();
+    f.close();
+    ctx.allocator.free(content_root);
+    ctx.allocator.free(path_from_content_root);
+    ctx.allocator.free(path_to_out_file);
+    ctx.allocator.free(out_file_name);
+    ctx.allocator.free(out_html_file);
+    ctx.allocator.free(dir_of_out_file);
     return final_out_path;
 }
 
