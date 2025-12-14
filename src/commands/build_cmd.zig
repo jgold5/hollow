@@ -1,6 +1,7 @@
 const std = @import("std");
 const md = @import("../core/markdown.zig");
 const Ctx = @import("../core/ctx.zig").Ctx;
+const template = @import("../core/template.zig");
 
 pub fn discoverProjectRoot(allocator: std.mem.Allocator, cwd: []const u8, project_arg: ?[]const u8) ![]const u8 {
     if (project_arg) |p| if (try validateRoot(allocator, p)) |res| return res;
@@ -83,15 +84,34 @@ pub fn run(ctx: *Ctx) !void {
     const mdFiles = try findMdFiles(ctx);
     defer ctx.allocator.free(mdFiles);
     for (mdFiles) |entry| {
+        const out_file = try makeOutFile(ctx, entry);
+        defer ctx.allocator.free(out_file);
+        var out_handle = try std.fs.openFileAbsolute(out_file, .{ .mode = .read_write });
+        defer out_handle.close();
         defer ctx.allocator.free(entry.absPath);
         defer ctx.allocator.free(entry.relPath);
-        try mdToHtml(ctx, entry);
+        const content_arr = try mdToArr(ctx, entry);
+        const template_arr = try loadBaseTemplate(ctx);
+        const with_template = try template.applyTemplate(ctx.allocator, template_arr, content_arr);
+        try out_handle.writeAll(with_template);
+        defer ctx.allocator.free(content_arr);
+        defer ctx.allocator.free(template_arr);
+        defer ctx.allocator.free(with_template);
     }
 }
 
 fn setOutDir(ctx: *Ctx) !void {
     const o = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "out" });
     try ctx.cwd.makePath(o);
+}
+
+fn loadBaseTemplate(ctx: *Ctx) ![]u8 {
+    const baseTemplate = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "/templates/base.html" });
+    const curr = try ctx.cwd.openFile(baseTemplate, .{});
+    const end = try curr.getEndPos();
+    const file_buf = try ctx.allocator.alloc(u8, end);
+    _ = try curr.readAll(file_buf);
+    return file_buf;
 }
 
 const MdFile = struct {
@@ -115,42 +135,36 @@ fn findMdFiles(ctx: *Ctx) ![]MdFile {
     return out.toOwnedSlice();
 }
 
-fn mdToHtml(ctx: *Ctx, md_file: MdFile) !void {
+fn mdToArr(ctx: *Ctx, md_file: MdFile) ![]u8 {
     const curr = try ctx.cwd.openFile(md_file.absPath, .{});
     const end = try curr.getEndPos();
     const file_buf = try ctx.allocator.alloc(u8, end);
     defer ctx.allocator.free(file_buf);
     _ = try curr.readAll(file_buf);
-    const out_file = try make_out_file(ctx, md_file);
-    defer ctx.allocator.free(out_file);
-    var out_file_handle = try std.fs.openFileAbsolute(out_file, .{ .mode = .read_write });
-    defer out_file_handle.close();
-    _ = md.md_html(file_buf.ptr, file_buf.len, md.hmtl_callback, @ptrCast(&out_file_handle), 0, 0);
-    //std.debug.print("out file: {s}\n", .{out_file});
+    var out_buf = std.ArrayList(u8).init(ctx.allocator);
+    defer out_buf.deinit();
+    _ = md.md_html(file_buf.ptr, file_buf.len, md.arr_callback, &out_buf, 0, 0);
+    return out_buf.toOwnedSlice();
 }
 
-fn make_out_file(ctx: *Ctx, md_file: MdFile) ![]const u8 {
+fn makeOutFile(ctx: *Ctx, md_file: MdFile) ![]const u8 {
     const content_root = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "content" });
     const path_from_content_root = try std.fs.path.relative(ctx.allocator, content_root, md_file.relPath);
     const path_to_out_file = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "out", path_from_content_root });
     const dir_of_out_file = std.fs.path.dirname(path_to_out_file).?;
     const out_file_name = std.fs.path.stem(path_to_out_file);
-    var sb = std.ArrayList(u8).init(ctx.allocator);
-    defer sb.deinit();
-    try sb.appendSlice(out_file_name);
-    try sb.appendSlice(".html");
-    const out_html_file = try sb.toOwnedSlice();
-    const final_out_path = try std.fs.path.join(ctx.allocator, &.{ dir_of_out_file, out_html_file });
-    _ = try ctx.cwd.makePath(dir_of_out_file);
-    const f = try std.fs.cwd().createFile(final_out_path, .{ .truncate = true });
+    const final_out_path = try std.fs.path.join(ctx.allocator, &.{ dir_of_out_file, out_file_name });
+    const out_file = try std.fs.path.join(ctx.allocator, &.{ final_out_path, "index.html" });
+    _ = try ctx.cwd.makePath(final_out_path);
+    const f = try std.fs.cwd().createFile(out_file, .{ .truncate = true });
     f.close();
     ctx.allocator.free(content_root);
     ctx.allocator.free(path_from_content_root);
     ctx.allocator.free(path_to_out_file);
-    ctx.allocator.free(out_file_name);
-    ctx.allocator.free(out_html_file);
     ctx.allocator.free(dir_of_out_file);
-    return final_out_path;
+    ctx.allocator.free(out_file_name);
+    ctx.allocator.free(final_out_path);
+    return out_file;
 }
 
 fn chdirScoped(a: std.mem.Allocator, into: []const u8) !void {
@@ -159,75 +173,3 @@ fn chdirScoped(a: std.mem.Allocator, into: []const u8) !void {
     try std.posix.chdir(into);
     errdefer std.posix.chdir(prev);
 }
-
-//test "Discover root in parent of parent" {
-//    const a = std.testing.allocator;
-//    var tmp = std.testing.tmpDir(.{});
-//    defer tmp.cleanup();
-//    try tmp.dir.makePath("proj/sub/leaf");
-//    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.toml", .data = "" });
-//    const start = try tmp.dir.realpathAlloc(a, "proj/sub/leaf");
-//    defer a.free(start);
-//    try chdirScoped(a, start);
-//    var got = try discoverProjectRoot(a, start, null);
-//    const want = try tmp.dir.realpathAlloc(a, "proj");
-//    defer a.free(want);
-//    defer got.deinit();
-//    try std.testing.expectEqualStrings(want, got);
-//}
-
-//test "MD To HTML" {
-//    const alloc = std.testing.allocator;
-//    var tmp = std.testing.tmpDir(.{});
-//    defer tmp.cleanup();
-//    try tmp.dir.makePath("proj/");
-//    try tmp.dir.makePath("proj/sub/");
-//    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.md", .data = "# HI" });
-//    try tmp.dir.writeFile(.{ .sub_path = "proj/sub/a.md", .data = "## HELLO" });
-//    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.toml", .data = "" });
-//    const start = try tmp.dir.realpathAlloc(alloc, "proj/");
-//    defer alloc.free(start);
-//    try chdirScoped(alloc, start);
-//    const root = try discoverProjectRoot(alloc, start, null);
-//    std.debug.print("ROOT: {s}", .{root});
-//    defer alloc.free(root);
-//    const mdFiles = try findMdFiles(alloc, root);
-//    defer alloc.free(mdFiles);
-//    for (mdFiles) |entry| {
-//        defer alloc.free(entry.absPath);
-//        defer alloc.free(entry.relPath);
-//        const curr = try std.fs.cwd().openFile(entry.absPath, .{});
-//        const end = try curr.getEndPos();
-//        const fileBuf = try alloc.alloc(u8, end);
-//        defer alloc.free(fileBuf);
-//        _ = try curr.readAll(fileBuf);
-//        var outBuf = std.ArrayList(u8).init(alloc);
-//        defer outBuf.deinit();
-//        _ = md.md_html(fileBuf.ptr, fileBuf.len, md.hmtl_callback, @ptrCast(&outBuf), 0, 0);
-//        std.debug.print("MD File: {s}\n", .{outBuf.items});
-//    }
-//}
-
-//test "Find MD files" {
-//    const a = std.testing.allocator;
-//    var tmp = std.testing.tmpDir(.{});
-//    defer tmp.cleanup();
-//    try tmp.dir.makePath("proj/");
-//    try tmp.dir.makePath("proj/sub/");
-//    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.md", .data = "" });
-//    try tmp.dir.writeFile(.{ .sub_path = "proj/sub/a.md", .data = "" });
-//    try tmp.dir.writeFile(.{ .sub_path = "proj/hollow.toml", .data = "" });
-//    const start = try tmp.dir.realpathAlloc(a, "proj/");
-//    defer a.free(start);
-//    try chdirScoped(a, start);
-//    var root = try discoverProjectRoot(a, start, null);
-//    defer root.deinit();
-//    const mdFiles = try findMdFiles(a, root);
-//    defer a.free(mdFiles);
-//    for (mdFiles) |f| {
-//        defer a.free(f.relPath);
-//        defer a.free(f.absPath);
-//        std.debug.print("{s}\n", .{f.relPath});
-//        std.debug.print("{s}\n", .{f.absPath});
-//    }
-//}

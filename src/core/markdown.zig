@@ -14,3 +14,9 @@ pub fn hmtl_callback(text: [*]const u8, size: usize, userdata: *anyopaque) callc
     const chunk = text[0..size];
     _ = file.writeAll(chunk) catch {};
 }
+
+pub fn arr_callback(text: [*]const u8, size: usize, userdata: *anyopaque) callconv(.C) void {
+    const buf: *std.ArrayList(u8) = @ptrCast(@alignCast(userdata));
+    const chunk = text[0..size];
+    buf.appendSlice(chunk) catch {};
+}

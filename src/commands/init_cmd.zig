@@ -14,24 +14,25 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
             .config_path = try a.dupe(u8, cfgRel),
         };
     }
-    const dirs = [_][]const u8{ "content", "layouts", "public", "themes/default", ".hollow/cache", "out", "content/posts" };
+    const dirs = [_][]const u8{ "content", "layouts", "public", "themes/default", ".hollow/cache", "out", "content/posts", "templates" };
     for (dirs) |d| {
         const p = try std.fs.path.join(a, &.{ root, d });
         defer a.free(p);
         try ctx.cwd.makePath(p);
     }
 
-    const baseIndex = try std.fs.path.join(a, &.{ root, "content", "index.md" });
+    const baseIndex = try std.fs.path.join(a, &.{ root, "content", "demo.md" });
+    const baseTemplate = try std.fs.path.join(a, &.{ root, "templates", "base.html" });
+    const secondIndex = try std.fs.path.join(a, &.{ root, "content", "posts", "firstpost.md" });
+    defer a.free(secondIndex);
     defer a.free(baseIndex);
+    defer a.free(baseTemplate);
 
     const default_index =
         \\# Welcome
         \\This is your new hollow site.
         \\Edit content/index.md to get started
     ;
-
-    const secondIndex = try std.fs.path.join(a, &.{ root, "content", "posts", "index.md" });
-    defer a.free(secondIndex);
 
     const second_text =
         \\# Welcome
@@ -47,8 +48,19 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
         \\content = "content"
         \\public = "public"
     ;
+
+    const default_template =
+        \\<html>
+        \\  <head><title>Title</title></head>
+        \\  <body>
+        \\    {{ content }}
+        \\  </body>
+        \\</html>
+    ;
+
     try writeAll(cfgRel, default_cfg);
     try writeAll(baseIndex, default_index);
+    try writeAll(baseTemplate, default_template);
     try writeAll(secondIndex, second_text);
     return Project{ .root_path = try a.dupe(u8, root), .config_path = try a.dupe(u8, cfgRel) };
 }
