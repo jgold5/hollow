@@ -22,22 +22,29 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
     }
 
     const baseIndex = try std.fs.path.join(a, &.{ root, "content", "demo.md" });
-    const baseTemplate = try std.fs.path.join(a, &.{ root, "templates", "base.html" });
+    const defaultTemplate = try std.fs.path.join(a, &.{ root, "templates", "default.html" });
     const secondIndex = try std.fs.path.join(a, &.{ root, "content", "posts", "firstpost.md" });
     defer a.free(secondIndex);
     defer a.free(baseIndex);
-    defer a.free(baseTemplate);
 
     const default_index =
+        \\---
+        \\ title: Demo Page
+        \\ date: 2025-11-11
+        \\---
         \\# Welcome
-        \\This is your new hollow site.
-        \\Edit content/index.md to get started
+        \\## This is a demo.
+        \\### Edit content/index.md to get started
     ;
 
     const second_text =
+        \\---
+        \\ title: First Post
+        \\ date: 1999-12-12
+        \\---
         \\# Welcome
-        \\This is your new hollow site.
-        \\Edit content/index.md to get started
+        \\## Wat up        
+        \\### GG
     ;
 
     const default_cfg =
@@ -51,8 +58,9 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
 
     const default_template =
         \\<html>
-        \\  <head><title>Title</title></head>
+        \\  <head><title>{{ title }}</title></head>
         \\  <body>
+        \\  <time datetime="{{ date }}">{{ date }}</time>
         \\    {{ content }}
         \\  </body>
         \\</html>
@@ -60,7 +68,7 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
 
     try writeAll(cfgRel, default_cfg);
     try writeAll(baseIndex, default_index);
-    try writeAll(baseTemplate, default_template);
+    try writeAll(defaultTemplate, default_template);
     try writeAll(secondIndex, second_text);
     return Project{ .root_path = try a.dupe(u8, root), .config_path = try a.dupe(u8, cfgRel) };
 }

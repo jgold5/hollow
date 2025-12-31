@@ -2,6 +2,7 @@ const std = @import("std");
 const md = @import("../core/markdown.zig");
 const Ctx = @import("../core/ctx.zig").Ctx;
 const template = @import("../core/template.zig");
+const log = std.log.scoped(.build);
 
 pub fn discoverProjectRoot(allocator: std.mem.Allocator, cwd: []const u8, project_arg: ?[]const u8) ![]const u8 {
     if (project_arg) |p| if (try validateRoot(allocator, p)) |res| return res;
@@ -84,20 +85,67 @@ pub fn run(ctx: *Ctx) !void {
     const mdFiles = try findMdFiles(ctx);
     defer ctx.allocator.free(mdFiles);
     for (mdFiles) |entry| {
+        const raw = try readMdFile(ctx, entry);
+        var parsed = try parseMdFile(ctx, raw);
+        printStringMap(parsed.meta);
+        defer parsed.deinit(ctx.allocator);
         const out_file = try makeOutFile(ctx, entry);
         defer ctx.allocator.free(out_file);
         var out_handle = try std.fs.openFileAbsolute(out_file, .{ .mode = .read_write });
         defer out_handle.close();
         defer ctx.allocator.free(entry.absPath);
         defer ctx.allocator.free(entry.relPath);
-        const content_arr = try mdToArr(ctx, entry);
-        const template_arr = try loadBaseTemplate(ctx);
-        const with_template = try template.applyTemplate(ctx.allocator, template_arr, content_arr);
+        const content_arr = try mdToArr(ctx, parsed);
+        const template_arr = try loadDefaultTemplate(ctx);
+        var template_context = try template.buildTemplateContext(ctx.allocator, parsed.meta, content_arr);
+        const with_template = try template.applyTemplate(ctx.allocator, template_arr, &template_context);
         try out_handle.writeAll(with_template);
+        defer template_context.values.deinit();
         defer ctx.allocator.free(content_arr);
         defer ctx.allocator.free(template_arr);
         defer ctx.allocator.free(with_template);
     }
+}
+
+fn readMdFile(ctx: *Ctx, md_file: MdFile) !RawMdFile {
+    const curr = try ctx.cwd.openFile(md_file.absPath, .{});
+    const end = try curr.getEndPos();
+    const file_buf = try ctx.allocator.alloc(u8, end);
+    _ = try curr.readAll(file_buf);
+    if (!std.mem.startsWith(u8, file_buf, "---\n")) {
+        return error.IncorrectFileStart;
+    }
+    const close_start = std.mem.indexOf(u8, file_buf, "\n---\n") orelse return error.MissingClosingMeta;
+    const meta_buf = file_buf[4..close_start];
+    const body_buf = file_buf[(close_start + 4)..];
+    return RawMdFile{ .buffer = file_buf, .meta = meta_buf, .body = body_buf };
+}
+
+fn printStringMap(map: std.StringHashMap([]const u8)) void {
+    var it = map.iterator();
+    std.debug.print("{{\n", .{});
+    while (it.next()) |e| {
+        std.debug.print(
+            "  \"{s}\" => \"{s}\"\n",
+            .{ e.key_ptr.*, e.value_ptr.* },
+        );
+    }
+    std.debug.print("}}\n", .{});
+}
+
+fn parseMdFile(ctx: *Ctx, raw_md_file: RawMdFile) !ParsedMdFile {
+    var meta_map = std.StringHashMap([]const u8).init(ctx.allocator);
+    var it = std.mem.splitScalar(u8, raw_md_file.meta, '\n');
+    while (it.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " ");
+        const i = std.mem.indexOfScalar(u8, trimmed, ':') orelse return error.ImproperMeta;
+        const k = trimmed[0..i];
+        const v = trimmed[i + 1 ..];
+        const k_trimmed = std.mem.trim(u8, k, " ");
+        const v_trimmed = std.mem.trim(u8, v, " ");
+        try meta_map.put(k_trimmed, v_trimmed);
+    }
+    return ParsedMdFile{ .body = raw_md_file.body, .buffer = raw_md_file.buffer, .meta = meta_map };
 }
 
 fn setOutDir(ctx: *Ctx) !void {
@@ -105,9 +153,9 @@ fn setOutDir(ctx: *Ctx) !void {
     try ctx.cwd.makePath(o);
 }
 
-fn loadBaseTemplate(ctx: *Ctx) ![]u8 {
-    const baseTemplate = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "/templates/base.html" });
-    const curr = try ctx.cwd.openFile(baseTemplate, .{});
+fn loadDefaultTemplate(ctx: *Ctx) ![]u8 {
+    const defaultTemplate = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "/templates/default.html" });
+    const curr = try ctx.cwd.openFile(defaultTemplate, .{});
     const end = try curr.getEndPos();
     const file_buf = try ctx.allocator.alloc(u8, end);
     _ = try curr.readAll(file_buf);
@@ -117,6 +165,23 @@ fn loadBaseTemplate(ctx: *Ctx) ![]u8 {
 const MdFile = struct {
     absPath: []const u8,
     relPath: []const u8,
+};
+
+const RawMdFile = struct {
+    buffer: []u8,
+    meta: []const u8,
+    body: []const u8,
+};
+
+const ParsedMdFile = struct {
+    buffer: []u8,
+    meta: std.StringHashMap([]const u8),
+    body: []const u8,
+
+    fn deinit(self: *ParsedMdFile, allocator: std.mem.Allocator) void {
+        allocator.free(self.buffer);
+        self.meta.deinit();
+    }
 };
 
 fn findMdFiles(ctx: *Ctx) ![]MdFile {
@@ -135,15 +200,10 @@ fn findMdFiles(ctx: *Ctx) ![]MdFile {
     return out.toOwnedSlice();
 }
 
-fn mdToArr(ctx: *Ctx, md_file: MdFile) ![]u8 {
-    const curr = try ctx.cwd.openFile(md_file.absPath, .{});
-    const end = try curr.getEndPos();
-    const file_buf = try ctx.allocator.alloc(u8, end);
-    defer ctx.allocator.free(file_buf);
-    _ = try curr.readAll(file_buf);
+fn mdToArr(ctx: *Ctx, md_file: ParsedMdFile) ![]u8 {
     var out_buf = std.ArrayList(u8).init(ctx.allocator);
     defer out_buf.deinit();
-    _ = md.md_html(file_buf.ptr, file_buf.len, md.arr_callback, &out_buf, 0, 0);
+    _ = md.md_html(md_file.body.ptr, md_file.body.len, md.arr_callback, &out_buf, 0, 0);
     return out_buf.toOwnedSlice();
 }
 
@@ -157,6 +217,8 @@ fn makeOutFile(ctx: *Ctx, md_file: MdFile) ![]const u8 {
     const out_file = try std.fs.path.join(ctx.allocator, &.{ final_out_path, "index.html" });
     _ = try ctx.cwd.makePath(final_out_path);
     const f = try std.fs.cwd().createFile(out_file, .{ .truncate = true });
+    log.debug("resolved output path: {s}", .{final_out_path});
+    log.info("emitted page: {s}", .{out_file});
     f.close();
     ctx.allocator.free(content_root);
     ctx.allocator.free(path_from_content_root);
