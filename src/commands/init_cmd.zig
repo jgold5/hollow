@@ -14,7 +14,7 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
             .config_path = try a.dupe(u8, cfgRel),
         };
     }
-    const dirs = [_][]const u8{ "content", "layouts", "public", "themes/default", ".hollow/cache", "out", "content/posts", "templates" };
+    const dirs = [_][]const u8{ "content", "layouts", "public", "themes/default", ".hollow/cache", "content/posts", "templates" };
     for (dirs) |d| {
         const p = try std.fs.path.join(a, &.{ root, d });
         defer a.free(p);

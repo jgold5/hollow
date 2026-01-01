@@ -84,6 +84,7 @@ pub fn run(ctx: *Ctx) !void {
     try setOutDir(ctx);
     const mdFiles = try findMdFiles(ctx);
     defer ctx.allocator.free(mdFiles);
+    try copyAssets(ctx);
     for (mdFiles) |entry| {
         const raw = try readMdFile(ctx, entry);
         var parsed = try parseMdFile(ctx, raw);
@@ -150,6 +151,7 @@ fn parseMdFile(ctx: *Ctx, raw_md_file: RawMdFile) !ParsedMdFile {
 
 fn setOutDir(ctx: *Ctx) !void {
     const o = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "out" });
+    try ctx.cwd.deleteTree(o);
     try ctx.cwd.makePath(o);
 }
 
@@ -234,4 +236,37 @@ fn chdirScoped(a: std.mem.Allocator, into: []const u8) !void {
     defer a.free(prev);
     try std.posix.chdir(into);
     errdefer std.posix.chdir(prev);
+}
+
+fn copyAssets(ctx: *Ctx) !void {
+    var src_assets_dir = ctx.cwd.openDir("assets", .{ .iterate = true }) catch return;
+    const dest_assets_path = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "out", "assets" });
+    defer ctx.allocator.free(dest_assets_path);
+    try ctx.cwd.makePath(dest_assets_path);
+    var dest_assets_dir = ctx.cwd.openDir(dest_assets_path, .{ .iterate = true }) catch return;
+    defer src_assets_dir.close();
+    defer dest_assets_dir.close();
+    try copyDir(src_assets_dir, dest_assets_dir);
+}
+
+fn copyDir(src: std.fs.Dir, dest: std.fs.Dir) !void {
+    var it = src.iterate();
+    while (try it.next()) |entry| {
+        switch (entry.kind) {
+            .file => {
+                try src.copyFile(entry.name, dest, entry.name, .{});
+                log.info("emitted asset: {s}", .{entry.name});
+            },
+            .directory => {
+                log.debug("resolved output path: {s}", .{entry.name});
+                try dest.makeDir(entry.name);
+                var src_child = try src.openDir(entry.name, .{ .iterate = true });
+                defer src_child.close();
+                var dest_child = try dest.openDir(entry.name, .{ .iterate = true });
+                defer dest_child.close();
+                try copyDir(src_child, dest_child);
+            },
+            else => {},
+        }
+    }
 }
