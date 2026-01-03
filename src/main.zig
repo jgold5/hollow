@@ -5,6 +5,7 @@
 const std = @import("std");
 const init = @import("commands/init_cmd.zig");
 const build = @import("commands/build_cmd.zig");
+const serve = @import("commands/serve_cmd.zig");
 const Ctx = @import("core/ctx.zig").Ctx;
 const BuildConfig = @import("core/ctx.zig").BuildConfig;
 
@@ -16,6 +17,7 @@ pub fn main() !u8 {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
     var ctx = try Ctx.init(alloc);
+    defer ctx.deinit();
     const build_cfg = try parseFlags(ctx.allocator, args);
     if (build_cfg) |cfg| {
         ctx.config = cfg;
@@ -41,6 +43,10 @@ pub fn main() !u8 {
             },
             Cmd.build => {
                 _ = try build.run(&ctx);
+                return 0;
+            },
+            Cmd.serve => {
+                _ = try serve.run(&ctx);
                 return 0;
             },
             else => return 64,

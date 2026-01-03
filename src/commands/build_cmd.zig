@@ -88,7 +88,6 @@ pub fn run(ctx: *Ctx) !void {
     for (mdFiles) |entry| {
         const raw = try readMdFile(ctx.allocator, ctx.cwd, entry);
         var parsed = try parseMdFile(ctx.allocator, raw);
-        printStringMap(parsed.meta);
         defer parsed.deinit(ctx.allocator);
         const out_file = try makeOutFile(ctx, entry);
         defer ctx.allocator.free(out_file);
@@ -156,6 +155,7 @@ fn setOutDir(ctx: *Ctx) !void {
     const o = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "out" });
     try ctx.cwd.deleteTree(o);
     try ctx.cwd.makePath(o);
+    ctx.out_dir = o;
 }
 
 fn loadDefaultTemplate(ctx: *Ctx) ![]u8 {
@@ -218,7 +218,7 @@ fn mdToArr(ctx: *Ctx, md_file: ParsedMdFile) ![]u8 {
 fn makeOutFile(ctx: *Ctx, md_file: MdFile) ![]const u8 {
     const content_root = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "content" });
     const path_from_content_root = try std.fs.path.relative(ctx.allocator, content_root, md_file.relPath);
-    const path_to_out_file = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "out", path_from_content_root });
+    const path_to_out_file = try std.fs.path.join(ctx.allocator, &.{ ctx.out_dir.?, path_from_content_root });
     const dir_of_out_file = std.fs.path.dirname(path_to_out_file).?;
     const out_file_name = std.fs.path.stem(path_to_out_file);
     const final_out_path = try std.fs.path.join(ctx.allocator, &.{ dir_of_out_file, out_file_name });
