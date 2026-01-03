@@ -95,14 +95,15 @@ pub fn run(ctx: *Ctx) !void {
     try setOutDir(ctx);
     const addr = try std.net.Address.parseIp4("127.0.0.1", ctx.port);
     var server = try std.net.Address.listen(addr, .{});
+    defer server.deinit();
     while (true) {
         try handleConection(ctx, &server);
     }
-    server.deinit();
 }
 
 fn handleConection(ctx: *Ctx, server: *std.net.Server) !void {
     var conn = try server.accept();
+    defer conn.stream.close();
     var req = std.ArrayList(u8).init(ctx.allocator);
     defer req.deinit();
     var buf: [1024]u8 = undefined;
@@ -116,6 +117,7 @@ fn handleConection(ctx: *Ctx, server: *std.net.Server) !void {
         try req.appendSlice(buf[0..n]);
     }
     const full_req = try req.toOwnedSlice();
+    defer ctx.allocator.free(full_req);
     const end_of_header = std.mem.indexOf(u8, full_req, "\r\n").?;
     const header = full_req[0..end_of_header];
     var it = std.mem.splitScalar(u8, header, ' ');
@@ -127,6 +129,7 @@ fn handleConection(ctx: *Ctx, server: *std.net.Server) !void {
     log.info("{s} request for {s}", .{ req_type, normalized_path });
     defer ctx.allocator.free(normalized_path);
     const joined_path = try joinWithFS(ctx.allocator, ctx.out_dir.?, normalized_path);
+    defer ctx.allocator.free(joined_path);
     const writer = conn.stream.writer();
     const file = std.fs.openFileAbsolute(joined_path, .{}) catch |err| switch (err) {
         error.FileNotFound => {
@@ -152,9 +155,6 @@ fn handleConection(ctx: *Ctx, server: *std.net.Server) !void {
         }
         try writer.writeAll(file_buf[0..file_n]);
     }
-    defer ctx.allocator.free(joined_path);
-    ctx.allocator.free(full_req);
-    conn.stream.close();
 }
 
 fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
