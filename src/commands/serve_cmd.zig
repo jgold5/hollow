@@ -95,6 +95,7 @@ pub fn run(ctx: *Ctx) !void {
     try setOutDir(ctx);
     const addr = try std.net.Address.parseIp4("127.0.0.1", ctx.port);
     var server = try std.net.Address.listen(addr, .{});
+    log.debug("serving on port {d}", .{ctx.port});
     defer server.deinit();
     while (true) {
         try handleConection(ctx, &server);

@@ -217,7 +217,16 @@ fn mdToArr(ctx: *Ctx, md_file: ParsedMdFile) ![]u8 {
 
 fn makeOutFile(ctx: *Ctx, md_file: MdFile) ![]const u8 {
     const content_root = try std.fs.path.join(ctx.allocator, &.{ ctx.project_root.?, "content" });
+    defer ctx.allocator.free(content_root);
     const path_from_content_root = try std.fs.path.relative(ctx.allocator, content_root, md_file.relPath);
+    defer ctx.allocator.free(path_from_content_root);
+    if (std.mem.eql(u8, path_from_content_root, "index.md")) {
+        const out_file = try std.fs.path.join(ctx.allocator, &.{ ctx.out_dir.?, "index.html" });
+        const f = try std.fs.cwd().createFile(out_file, .{ .truncate = true });
+        f.close();
+        log.info("emitted page: {s}", .{out_file});
+        return out_file;
+    }
     const path_to_out_file = try std.fs.path.join(ctx.allocator, &.{ ctx.out_dir.?, path_from_content_root });
     const dir_of_out_file = std.fs.path.dirname(path_to_out_file).?;
     const out_file_name = std.fs.path.stem(path_to_out_file);
@@ -228,8 +237,6 @@ fn makeOutFile(ctx: *Ctx, md_file: MdFile) ![]const u8 {
     log.debug("resolved output path: {s}", .{final_out_path});
     log.info("emitted page: {s}", .{out_file});
     f.close();
-    ctx.allocator.free(content_root);
-    ctx.allocator.free(path_from_content_root);
     ctx.allocator.free(path_to_out_file);
     ctx.allocator.free(dir_of_out_file);
     ctx.allocator.free(out_file_name);

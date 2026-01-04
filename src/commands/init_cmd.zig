@@ -5,46 +5,44 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
     const a = ctx.allocator;
     const root = opts.project_root orelse ".";
     try ctx.cwd.makePath(root);
-    const cfgRel = try std.fs.path.join(a, &.{ root, "hollow.toml" });
-    defer a.free(cfgRel);
+    const cfg_file = try std.fs.path.join(a, &.{ root, "hollow.toml" });
+    defer a.free(cfg_file);
 
-    if (try fileExists(cfgRel) and !opts.force) {
+    if (try fileExists(cfg_file) and !opts.force) {
         return Project{
             .root_path = try a.dupe(u8, root),
-            .config_path = try a.dupe(u8, cfgRel),
+            .config_path = try a.dupe(u8, cfg_file),
         };
     }
-    const dirs = [_][]const u8{ "content", "layouts", "public", "themes/default", ".hollow/cache", "content/posts", "templates" };
+    const dirs = [_][]const u8{ "content", "layouts", "public", "themes/default", ".hollow/cache", "templates" };
     for (dirs) |d| {
         const p = try std.fs.path.join(a, &.{ root, d });
         defer a.free(p);
         try ctx.cwd.makePath(p);
     }
 
-    const baseIndex = try std.fs.path.join(a, &.{ root, "content", "demo.md" });
-    const defaultTemplate = try std.fs.path.join(a, &.{ root, "templates", "default.html" });
-    const secondIndex = try std.fs.path.join(a, &.{ root, "content", "posts", "firstpost.md" });
-    defer a.free(secondIndex);
-    defer a.free(baseIndex);
+    const base_index_file = try std.fs.path.join(a, &.{ root, "content", "index.md" });
+    const default_template_file = try std.fs.path.join(a, &.{ root, "templates", "default.html" });
+    defer a.free(base_index_file);
 
     const default_index =
         \\---
-        \\ title: Demo Page
+        \\ title: Index Page
         \\ date: 2025-11-11
         \\---
-        \\# Welcome
-        \\## This is a demo.
-        \\### Edit content/index.md to get started
-    ;
-
-    const second_text =
-        \\---
-        \\ title: First Post
-        \\ date: 1999-12-12
-        \\---
-        \\# Welcome
-        \\## Wat up        
-        \\### GG
+        \\# Hollow
+        \\
+        \\Hollow is a minimal static site generator focused on clarity over features.
+        \\
+        \\It takes Markdown content, renders it through a small, explicit template contract, and writes predictable HTML output. No plugins, no magic, no hidden state.
+        \\
+        \\## Philosophy
+        \\
+        \\- One clear build path  
+        \\- Explicit data flow  
+        \\- Boring, debuggable behavior  
+        \\
+        \\If you can trace the build in your head, Hollow is doing its job.
     ;
 
     const default_cfg =
@@ -66,11 +64,10 @@ pub fn run(ctx: *const Ctx, opts: InitOpts) !Project {
         \\</html>
     ;
 
-    try writeAll(cfgRel, default_cfg);
-    try writeAll(baseIndex, default_index);
-    try writeAll(defaultTemplate, default_template);
-    try writeAll(secondIndex, second_text);
-    return Project{ .root_path = try a.dupe(u8, root), .config_path = try a.dupe(u8, cfgRel) };
+    try writeAll(cfg_file, default_cfg);
+    try writeAll(base_index_file, default_index);
+    try writeAll(default_template_file, default_template);
+    return Project{ .root_path = try a.dupe(u8, root), .config_path = try a.dupe(u8, cfg_file) };
 }
 
 pub const InitOpts = struct {
